@@ -20,10 +20,10 @@ env:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
+    env:
+      USE_GKE_GCLOUD_AUTH_PLUGIN: "True"   # <- tell kubectl to use the plugin
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       # Authenticate with service account JSON key
       - name: Auth to GCP (Service Account Key)
@@ -36,6 +36,14 @@ jobs:
         uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: ${{ env.PROJECT_ID }}
+          install_components: gke-gcloud-auth-plugin   # <- install the plugin
+
+
+        # (optional) ensure kubectl is present/pinned
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: "latest"
 
       # Get kubecontext for the cluster (works for zonal or regional)
       - name: Fetch GKE credentials
