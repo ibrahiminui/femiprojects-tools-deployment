@@ -12,89 +12,78 @@ permissions:
 env:
   PROJECT_ID: global-web-server-473500
   CLUSTER_NAME: us-west2-gke-cluster
-  CLUSTER_LOCATION: us-west2   # zone (e.g., us-west2-a) or region (e.g., us-west2)
+  CLUSTER_LOCATION: us-west2
   NAMESPACE: argocd
   RELEASE_NAME: argocd
-  CHART_DIR: argocd
+  VALUES_DIR: argocd        # folder that contains values.yaml (no Chart.yaml)
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     env:
-      USE_GKE_GCLOUD_AUTH_PLUGIN: "True"   # <- tell kubectl to use the plugin
+      USE_GKE_GCLOUD_AUTH_PLUGIN: "True"
+
     steps:
       - uses: actions/checkout@v4
 
-      # Authenticate with service account JSON key
       - name: Auth to GCP (Service Account Key)
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
           export_environment_variables: true
 
-      - name: Set up gcloud
+      - name: Set up gcloud (with GKE auth plugin)
         uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: ${{ env.PROJECT_ID }}
-          install_components: gke-gcloud-auth-plugin   # <- install the plugin
+          install_components: gke-gcloud-auth-plugin
 
-
-        # (optional) ensure kubectl is present/pinned
       - name: Set up kubectl
         uses: azure/setup-kubectl@v4
         with:
           version: "latest"
 
-      # Get kubecontext for the cluster (works for zonal or regional)
       - name: Fetch GKE credentials
         run: |
           gcloud container clusters get-credentials "$CLUSTER_NAME" \
             --project "$PROJECT_ID" \
             --location "$CLUSTER_LOCATION"
 
-
-        # NEW: Add and update the repo explicitly
-      - name: Helm repo add + update
-        run: |
-          helm repo add argo https://argoproj.github.io/argo-helm
-          helm repo update
-
       - name: Set up Helm
         uses: azure/setup-helm@v4
         with:
           version: v3.14.4
 
-      # Pull the Argo CD dependency defined in Chart.yaml
-      - name: Helm dependency build
-        working-directory: ${{ env.CHART_DIR }}
-        run: helm dependency build
-
-      # Make sure the namespace exists (chart also creates it, but this is idempotent)
-      - name: Create namespace if needed
-        run: kubectl get ns $NAMESPACE || kubectl create ns $NAMESPACE
-
-      # Deploy / Upgrade Argo CD
-      - name: Helm upgrade --install
+      - name: Helm repo add + update
         run: |
-          helm upgrade --install "$RELEASE_NAME" "${CHART_DIR}" \
+          helm repo add argo https://argoproj.github.io/argo-helm
+          helm repo update
+
+      # EITHER keep this step...
+      #- name: Create namespace if needed
+      #  run: kubectl get ns $NAMESPACE || kubectl create ns $NAMESPACE
+
+      # ...OR let Helm create it automatically with --create-namespace (chosen below)
+      - name: Install / Upgrade Argo CD (direct)
+        run: |
+          helm upgrade --install "$RELEASE_NAME" argo/argo-cd \
             --namespace "$NAMESPACE" \
-            --values "${CHART_DIR}/values.yaml" \
+            --create-namespace \
+            --values "${VALUES_DIR}/values.yaml" \
             --wait --timeout 15m
 
-      # Show Argo CD server LB endpoint (once allocated)
       - name: Show Argo CD Server External IP
         run: |
-          echo "Waiting for LoadBalancer external IP..."
           for i in {1..30}; do
             IP=$(kubectl -n $NAMESPACE get svc argocd-server -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)
-            HOSTNAME=$(kubectl -n $NAMESPACE get svc argocd-server -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)
-            if [ -n "$IP" ] || [ -n "$HOSTNAME" ]; then
-              echo "Argo CD UI is reachable at:"
+            HN=$(kubectl -n $NAMESPACE get svc argocd-server -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)
+            if [ -n "$IP" ] || [ -n "$HN" ]; then
+              echo "Argo CD UI:"
               [ -n "$IP" ] && echo "  http://$IP"
-              [ -n "$HOSTNAME" ] && echo "  http://$HOSTNAME"
+              [ -n "$HN" ] && echo "  http://$HN"
               exit 0
             fi
             sleep 10
           done
-          echo "Still provisioning the external load balancer. Check again in a minute with:"
+          echo "LB still provisioning. Check later with:"
           echo "kubectl -n $NAMESPACE get svc argocd-server -o wide"
