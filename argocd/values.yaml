@@ -1,11 +1,40 @@
-apiVersion: v2
-name: argocd-wrapper
-description: Minimal wrapper chart to install and expose Argo CD on GKE
-type: application
-version: 0.1.0
-appVersion: "1.0"
+global:
+  domain: ""   # set later if using DNS
 
-dependencies:
-  - name: argo-cd
-    version: ">=6.0.0 <9.0.0"
-    repository: "https://argo.github.io/argo-helm"
+fullnameOverride: argocd
+
+controller:
+  replicas: 1
+
+repoServer:
+  replicas: 1
+
+applicationSet:
+  enabled: true
+
+server:
+  replicas: 1
+  service:
+    type: LoadBalancer
+    # Optional GKE annotations / static IP:
+    # annotations:
+    #   cloud.google.com/load-balancer-type: "External"
+    # loadBalancerIP: "X.X.X.X"
+
+  # Example hardening knobs to consider later:
+  # resources:
+  #   requests: { cpu: 100m, memory: 256Mi }
+  #   limits:   { cpu: 500m, memory: 512Mi }
+
+configs:
+  secret:
+    create: true
+    # admin:
+    #   password: "$2a$12$..."       # bcrypt hash; set + rotate if desired
+    #   passwordMtime: "2025-10-07T00:00:00Z"
+
+rbac:
+  create: true
+
+serverIngress:
+  enabled: false
