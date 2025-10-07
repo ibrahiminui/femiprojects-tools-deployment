@@ -44,6 +44,13 @@ jobs:
             --project "$PROJECT_ID" \
             --location "$CLUSTER_LOCATION"
 
+
+        # NEW: Add and update the repo explicitly
+      - name: Helm repo add + update
+        run: |
+          helm repo add argo https://argoproj.github.io/argo-helm
+          helm repo update
+
       - name: Set up Helm
         uses: azure/setup-helm@v4
         with:

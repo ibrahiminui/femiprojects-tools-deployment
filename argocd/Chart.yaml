@@ -8,4 +8,4 @@ appVersion: "1.0"
 dependencies:
   - name: argo-cd
     version: ">=6.0.0 <9.0.0"
-    repository: "https://argo.github.io/argo-helm"
+    repository: https://argoproj.github.io/argo-helm"
